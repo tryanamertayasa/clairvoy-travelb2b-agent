@@ -15,13 +15,15 @@
 """Clairvoy B2B Travel Consolidator - Root Agent Definition.
 
 This module defines the root agent for the B2B Travel Consolidation platform.
-It uses CONVERSATIONAL DELEGATION (not SequentialAgent) to orchestrate 5 specialized sub-agents:
+It uses CONVERSATIONAL DELEGATION (not SequentialAgent) to orchestrate 7 specialized sub-agents:
 
 1. ValidationAgent - Validates B2B partnership feasibility, risk, and pricing (AI-only, no human pause)
 2. MatchingAgent - Searches GDS (Amadeus mock) for supplier inventory
 3. ConsolidatorAgent - Aggregates multi-product inventory and calculates GMV potential
 4. DistributionAgent - Designs API integration packages with white-label options
 5. ReportGeneratorAgent - Generates professional HTML B2B partnership proposals
+6. ItineraryAgent - Builds traveler itineraries (destination, duration, season, budget, companions) with IDR cost breakdowns
+7. AfterSalesAgent - Refund/reschedule fare rules, cost estimates, and per-supplier settlement calculations
 
 The agent uses conversational delegation, meaning the LLM decides which specialist
 agents to consult based on the conversation flow, rather than running a fixed pipeline.
@@ -51,9 +53,11 @@ from google.adk.agents.llm_agent import Agent
 from google.adk.tools.agent_tool import AgentTool
 
 from .config import APP_NAME, FAST_MODEL
+from .sub_agents.aftersales_agent.agent import aftersales_agent
 from .sub_agents.consolidator_agent.agent import consolidator_agent
 from .sub_agents.distribution_agent.agent import distribution_agent
 from .sub_agents.intake_agent.agent import intake_agent
+from .sub_agents.itinerary_agent.agent import itinerary_agent
 from .sub_agents.matching_agent.agent import matching_agent
 from .sub_agents.report_generator.agent import report_generator_agent
 from .sub_agents.validation_agent.agent import validation_agent
@@ -64,15 +68,39 @@ root_agent = Agent(
     model=FAST_MODEL,
     name=APP_NAME,
     description="Clairvoy: AI-powered B2B travel consolidator connecting OTAs and TMCs with GDS supplier inventory.",
-    instruction="""You are Clairvoy, a B2B travel consolidation specialist.
+    instruction="""Runtime context:
+- Current time: {time}
+- Current date: {date}
+- Current datetime: {datetime}
+- Workspace ID: {workspace.id}
+- Workspace name: {workspace.name}
 
-Your role is to help OTAs (Online Travel Agencies), travel apps, and TMCs (Travel Management Companies)
-find the right supplier inventory for their business needs.
+You are Clairvoy, a travel platform specialist serving travel agents.
 
-## Workflow
+You handle THREE kinds of requests. Route each user message to the right lane first:
 
-### 1. INTAKE (Required First Step)
-When a client makes an inquiry, ALWAYS start by calling the `IntakeAgent` tool.
+## LANE A: Itinerary & trip planning → delegate to ItineraryAgent
+Any request for trip recommendations or itineraries — with or without a destination,
+duration, season (e.g., spring, sakura), budget (budget-friendly, luxury, hard caps
+like "under IDR 5.000.000"), or travel companions (couple, family, solo).
+Examples: "Recommend an itinerary", "3 days in Bali under IDR 5 juta", "sakura trip",
+"family trip to Bali", "solo culture trip to Korea".
+→ Transfer to **ItineraryAgent** immediately. Do NOT call IntakeAgent for these.
+
+## LANE B: After-sales (refund/reschedule) → delegate to AfterSalesAgent
+Any request about refund or reschedule rules, cost estimates, or calculations —
+for airlines (e.g., "SQ fare rules"), hotels, or existing bookings.
+Examples: "What are SQ's refund rules?", "Estimate my reschedule cost",
+"Calculate the refund split per supplier for my booking".
+→ Transfer to **AfterSalesAgent** immediately. Do NOT call IntakeAgent for these.
+
+## LANE C: B2B partnership & supplier consolidation → workflow below
+Inquiries from OTAs (Online Travel Agencies), travel apps, and TMCs (Travel Management
+Companies) looking for supplier inventory, partnership feasibility, API integration,
+or partnership proposals.
+
+### 1. INTAKE (Required First Step for Lane C only)
+When a client makes a B2B partnership inquiry, ALWAYS start by calling the `IntakeAgent` tool.
 This parses their demand into structured format:
 - Client name and POS (Point-of-Sale) markets
 - Routes (origin-destination pairs)
@@ -104,6 +132,16 @@ to choose which agents to consult, in any order, based on what the client asks.
 - **ReportGeneratorAgent**: To generate professional HTML executive reports
   - Use when: Client needs a formal proposal document or wants a comprehensive summary
   - Provides: 7-slide McKinsey/BCG-style HTML partnership proposal saved as artifact
+
+**Consumer-facing Specialist Agents (Lanes A & B):**
+
+- **ItineraryAgent**: Traveler itineraries and destination recommendations
+  - Use when: Any trip-planning request (Lane A)
+  - Provides: Destination suggestions, day-by-day plans with per-activity / daily / trip-total IDR pricing, season- and companion-aware picks
+
+- **AfterSalesAgent**: Refund and reschedule servicing
+  - Use when: Any refund/reschedule question (Lane B)
+  - Provides: Airline fare rules (incl. SQ), hotel cancellation policies, cost estimates, exact per-supplier settlement splits for bookings
 
 ### 3. CONVERSATIONAL FLEXIBILITY
 **IMPORTANT PRINCIPLES:**
@@ -148,6 +186,14 @@ You:
 3. Delegate to ReportGeneratorAgent → create HTML proposal
 4. Present the formal report to the user
 
+**Example 5: Itinerary Request (Lane A)**
+User: "Give me a 3-day Bali itinerary for a family trip under IDR 5.000.000"
+You: Transfer to ItineraryAgent (no IntakeAgent).
+
+**Example 6: After-Sales Request (Lane B)**
+User: "What would a refund cost on my Singapore Airlines booking?"
+You: Transfer to AfterSalesAgent (no IntakeAgent).
+
 ## Key Principles
 - Be conversational and helpful
 - Only delegate when it adds value to the conversation
@@ -187,6 +233,8 @@ Use this state data to provide informed, contextual responses to the user.
         consolidator_agent,
         distribution_agent,
         report_generator_agent,
+        itinerary_agent,
+        aftersales_agent,
     ],
     tools=[AgentTool(intake_agent)],  # IntakeAgent is used as a tool, not sub-agent
 )

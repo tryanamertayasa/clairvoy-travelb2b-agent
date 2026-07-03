@@ -21,11 +21,15 @@ This module exports all specialized agents:
 3. ConsolidatorAgent - Aggregates inventory and calculates GMV potential
 4. DistributionAgent - Designs API integration packages
 5. ReportGeneratorAgent - Generates HTML B2B partnership proposals
+6. ItineraryAgent - Builds traveler itineraries with cost breakdowns
+7. AfterSalesAgent - Refund/reschedule rules, estimates, and settlements
 """
 
+from .aftersales_agent import aftersales_agent
 from .consolidator_agent import consolidator_agent
 from .distribution_agent import distribution_agent
 from .intake_agent import intake_agent
+from .itinerary_agent import itinerary_agent
 from .matching_agent import matching_agent
 from .report_generator import report_generator_agent
 from .validation_agent import validation_agent
