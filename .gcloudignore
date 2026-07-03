@@ -1,0 +1,29 @@
+# Keep the Cloud Build source upload minimal: the Dockerfile only needs
+# pyproject.toml, README.md, uv.lock, and app/ (backend only).
+.gcloudignore
+.git
+.gitignore
+#!include:.gitignore
+
+# Local worktrees and secrets
+.worktrees/
+.env
+app/.env
+
+# Frontend (built separately; not served by the backend image)
+app/frontend/
+
+# Docs, samples, and template assets not needed in the image
+assets/
+notebook/
+notebooks/
+deployment/
+tests/
+AGENTS.md
+CLAUDE.md
+DEVELOPER_GUIDE.md
+test.html
+package-lock.json
+package.json
+run_agent.py
+run_qa_matrix.py
